@@ -1,0 +1,194 @@
+---
+title: "Assigment - kNN DIY"
+author:
+  - Author -Stijn Kuipers
+  - Reviewer - Semen Ploskov
+date: "`r format(Sys.time(), '%d %B, %Y')`"
+output:
+   html_notebook:
+    toc: true
+    toc_depth: 2
+editor_options: 
+  markdown: 
+    wrap: 72
+---
+
+First let's load all the packages we are going to use in this assignment
+
+```{r}
+library(tidyverse)
+library(class)
+library(caret)
+library(class)
+#possibly not needed
+library(e1071)
+library(readr)
+```
+
+------------------------------------------------------------------------
+
+Choose a suitable dataset from
+[this](https://github.com/HAN-M3DM-Data-Mining/assignments/tree/master/datasets)
+folder and train your own kNN model. Follow all the steps from the
+CRISP-DM model.
+
+I have chosen the occupancy.csv as my first. Let's load this data set
+directly from GitHub.
+
+## Business Understanding
+
+Before we start working on a data set we need to understand the business
+side of things. We understand that our data is about *occupancy*. Which
+probably means sensor data based on different parameters. Parameters can
+be like Temperature, Humidity. But this can be much more. Let's look at
+the data to get more information.
+
+```{r}
+url <- "https://raw.githubusercontent.com/HAN-M3DM-Data-Mining/assignments/master/datasets/KNN-occupancy.csv"
+rawDF <- read.csv(url)
+```
+
+## Data Understanding
+
+There are lot's of methods to get to know your data set. The main reason
+you do this as prepration is to get a feel for the data. What does the
+data consist of. This can improve workflow in the future.
+
+```{r}
+str(rawDF)
+# to get a basic understanding of the data
+head(rawDF)
+# a first hand look at the data itself. To show the first few rows and column
+summary(rawDF)
+#summary of the data frame.
+```
+
+The data frame *rawDF* has 7 variables (colomns) and 8143 observations
+(rows). We also have some information about the different columns. What
+different data types are present. In this data frame:
+
+-   Character as the Date-Column
+-   Numerical columns in Temperature, Humidity, Light, CO2 and the
+    HumidityRatio
+-   Integer data type in the Occupancy
+
+There is also some extra info for the numerical data with the summery.
+It gives you an idea what the ranges of each column are.
+
+## Data Preparation
+
+Now we understand the data. Now we have to prepare/clean it. The
+timestamp or date-column of each measurement is not really relevant so
+we want to remove it from the raw data set.
+
+```{r}
+cleanDF <- rawDF[-1]
+head(cleanDF)
+```
+
+Let's try and clean the other columns as well. The variable we would
+like to predict is the Occupancy. Whether it is On or Off, 1 or 0. and
+what is the proportion of the Occupancy.
+
+
+AMOUNT OF DIGITS FOR COLUMNS 1:4 SHOULD BE REPLACED BY 1, SINCE THEN DATA WILL BE MORE VISIBLE 
+```{r}
+cntOcc <- table(cleanDF$Occupancy) #Counting the Occupancy of 1 or 0
+propOcc <- round(prop.table(cntOcc) * 100 , digits = 1) #getting the distribution of this column
+cleanDF[1:4] <- round(cleanDF[1:4], digits = 5) #rounding data for better visibility of column 1 to 4
+cleanDF$HumidityRatio <- round(cleanDF$HumidityRatio, digits = 6) #rounding data for better visibility of column 5
+
+cntOcc 
+propOcc
+
+```
+
+As you can see. 6414 time (78,8%) at 0 and 1729 times (21.2%) at 1, with
+a distribution of 78.8% and 21.2%
+
+```{r}
+cleanDF$Occupancy <- factor(cleanDF$Occupancy, levels = c("1","0"), labels = c("ON", "OFF")) %>% relevel("ON")
+head(cleanDF, 25)
+```
+
+Lets check the summery of the newly cleaned data.
+
+```{r}
+summary(cleanDF[c(1:5)])
+```
+
+These 5 variables have a very different range and as a consequence CO2
+for example will have a larger impact on the distance calculation than
+the HumidityRatio. Because of this reason we are going to normalize the
+data.
+
+Creating the normalize function
+
+```{r}
+normalize <- function(x) { # Function takes in a vector
+  return ((x - min(x)) / (max(x) - min(x))) # distance of item value - minimum vector value divided by the range of all vector values
+}
+```
+
+```{r}
+# not using  the dim function here. because it is not needed in this case.
+cleanDF_n <- sapply(1:5,
+                    function(x)  {
+  normalize(cleanDF[,x])
+}) %>% as.data.frame()
+
+summary(cleanDF_n[c(1:5)])
+```
+
+Lets split the data set to a training set and a test set. One data frame
+set without the label and one with the label data set.
+
+
+THIS PHASE IS NOT DONE PROPERLY, SINCE ONE TEST SET AND ONE TRAINING SET ARE MISSING
+```{r}
+
+testDF_feat <- cleanDF_n[4001:8143,  ]
+
+trainDF_labels <- as.data.frame(cleanDF[1:4000,  6]) #we use as.data.frame otherwise it sees it as values.
+
+```
+
+We are done with preparing the data.
+
+## Modeling
+
+To train the kNN model we only need one single function from the class
+package. It takes the set with training features and the set with
+training label. The trained model is applied to the set with test
+features and the function gives back a set of predictions.
+
+**Determining the K value** With a bit of searching a generic value can
+be used by taking the square root of the total number of observations
+for K according to
+[source](https://rstudio-pubs-static.s3.amazonaws.com/316172_a857ca788d1441f8be1bcd1e31f0e875.html)
+
+```{r}
+#calculating the K value.
+Kcalc <- round(sqrt(nrow(cleanDF_n)), digits = 0)
+```
+
+```{r}
+cleanDF_test_pred <- knn(train = as.matrix(trainDF_feat), test = as.matrix(testDF_feat), cl = as.matrix(trainDF_labels), k = Kcalc)
+head(cleanDF_test_pred)
+```
+
+## Evaluation and Deployment
+
+Let's test how well the model has predicted the Occupancy.
+
+
+FALSE SHOULD BE REPLACED REPLACED WITH TRUE
+```{r}
+confusionMatrix(cleanDF_test_pred, testDF_labels[[1]], positive = NULL, dnn = c("Prediction", "FALSE"))
+```
+I believe the model is pretty accurate. Any suggestions or improvements are welcome :).
+
+------------------------------------------------------------------------
+## Review
+When i was reviewing this script, i was able to find several mistakes. I left my comments next to them in CAPSLOCK.
+
