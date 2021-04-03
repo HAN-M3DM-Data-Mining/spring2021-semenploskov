@@ -1,7 +1,7 @@
 ---
 title: "Assigment - Naive Bayes DIY"
 author:
-  - name author here - Author
+  - name author here - Semen Ploskov
   - name reviewer here - Reviewer
 date: "`r format(Sys.time(), '%d %B, %Y')`"
 output:
@@ -9,7 +9,6 @@ output:
     toc: true
     toc_depth: 2
 ---
-
 ```{r}
 library(tidyverse)
 library(tm)
@@ -17,24 +16,143 @@ library(caret)
 library(wordcloud)
 library(e1071)
 ```
----
+
+
+
+
+
 
 Choose a suitable dataset from [this](https://github.com/HAN-M3DM-Data-Mining/assignments/tree/master/datasets) folder and train your own Naive Bayes model. Follow all the steps from the CRISP-DM model.
 
 
 ## Business Understanding
-text and code here
+Nowadays there is a huge amount of fake news that we can face in the media. By using the Naive Bayes model, we're are going to find the probability of facing the fake news by analyzing the titles o the news and compare it to the probability of facing a real news.
 
 ## Data Understanding
-text and code here
+
+
+```{r}
+url <- "https://raw.githubusercontent.com/HAN-M3DM-Data-Mining/assignments/master/datasets/NB-fakenews.csv"
+rawDF <- read_csv(url) 
+```
+
+
+```{r}
+head(rawDF)
+```
+The dataset has 5 variables and 20800 observations. We decide to clean the dataset, since id, author and text aren't really relevant, as we are going to have a look on the title of the news and its label.In this case it'll take less time to download it. 
+
+```{r}
+cleanDF <- rawDF[c(-1,-3,-4)]  
+head(cleanDF)
+```
+
+I switched the columns 
+```{r}
+cleanDF<- cleanDF[c(2,1)]
+head(cleanDF)
+```
+
+Variable label is numeric and should be converted to a factor variable
+
+```{r}
+cleanDF$label <- cleanDF$label %>% factor
+cleanDF$label <- factor(cleanDF$label, levels=c("0","1"),labels=c("True", "Fake")) %>% relevel("True")
+
+levels(cleanDF$label)
+class(cleanDF$label)
+
+```
+
 
 ## Data Preparation
-text and code here
+
+Here i converted data to corpus
+```{r}
+rawCorpus <- Corpus(VectorSource(cleanDF$title))
+inspect(rawCorpus[1:3])
+```
+Corpus contains 20800 elements, which is equal to the amount of the messages we have.
+
+Here i changed everything to lowercases and removed the numbers
+```{r}
+cleanCorpus <- rawCorpus %>% tm_map(tolower) %>% tm_map(removeNumbers)
+```
+Here i removed the stopwords, punctuation 
+```{r}
+cleanCorpus <- cleanCorpus %>% tm_map(tolower) %>% tm_map(removeWords, stopwords()) %>% tm_map(removePunctuation)
+```
+
+Here i removed the white spaces
+```{r}
+cleanCorpus <- cleanCorpus %>% tm_map(stripWhitespace)
+```
+Here i compared the corpus with raw version
+```{r}
+tibble(Raw = rawCorpus$content[1:3], Clean = cleanCorpus$content[1:3])
+```
+Build DTM
+```{r}
+cleanDTM <- cleanCorpus %>% DocumentTermMatrix
+inspect(cleanDTM)
+```
+Now i split dataset into training and testing
+```{r}
+# Create split indices
+set.seed(1234)
+trainIndex <- createDataPartition(cleanDF$title, p =.75, 
+                                  list = FALSE, 
+                                  times = 1)
+head(trainIndex)
+
+# Apply split indices to DF
+trainDF <- cleanDF[trainIndex, ]
+testDF <- cleanDF[-trainIndex, ]
+
+# Apply split indices to Corpus
+trainCorpus <- cleanCorpus[trainIndex]
+testCorpus <- cleanCorpus[-trainIndex]
+
+# Apply split indices to DTM
+trainDTM <- cleanDTM[trainIndex, ]
+testDTM <- cleanDTM[-trainIndex, ]
+```
+
+Here i eliminated words with low frequencies
+```{r}
+freqWords <- trainDTM %>% findFreqTerms(5)
+trainDTM <-  DocumentTermMatrix(trainCorpus, list(dictionary = freqWords))
+testDTM <-  DocumentTermMatrix(testCorpus, list(dictionary = freqWords))
+```
+
+
+```{r}
+convert_counts <- function(x) {
+  x <- ifelse(x > 0, 1, 0) %>% factor(levels = c(0,1), labels = c("True", "Fake"))
+}
+
+nColsDTM <- dim(trainDTM)[2]
+```
+
+
+```{r}
+trainDTM <- apply(trainDTM, MARGIN = 2, convert_counts)
+testDTM <- apply(testDTM, MARGIN = 2, convert_counts)
+
+head(trainDTM[,1:10])
+```
+
 
 ## Modeling
-text and code here
+```{r}
+nbayesModel <-  naiveBayes(trainDTM, trainDF$type, laplace = 1)
+```
+
 
 ## Evaluation and Deployment
-text and code here
+```{r}
+predVec <- predict(nbayesModel, testDTM)
+confusionMatrix(predVec, testDF$type, positive = "Fake", dnn = c("Prediction", "True"))
+```
 
-reviewer adds suggestions for improving the model
+Note: even though i took correct steps, i faced some problems in the last phase as there were not enough space to download the data. 
